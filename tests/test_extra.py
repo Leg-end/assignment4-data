@@ -1,8 +1,8 @@
 from cs336_data.extract_text import read_warc, read_wet
 from .adapters import run_extract_text_from_html_bytes, run_mask_emails,\
     run_mask_ips, run_mask_phone_numbers, run_gopher_quality_filter
+from cs336_data.filters import FastTextFilter
     
-import fasttext
 import pathlib
 import os
 
@@ -23,23 +23,6 @@ def print_nearby(ori: str, masked: str, replacement: str, max_cnt:int=10):
         i = masked.find(replacement, i + l_replacement)
         
 
-def run_text_preprocess(text: str) -> str | None:
-    # 1. run_gopher_quality_filter
-    # 2. mask
-    if not run_gopher_quality_filter(text):
-        return None
-    
-    total_cnt = 0
-    for masker in [run_mask_emails, run_mask_ips, run_mask_ips]:
-        masked_text, cnt = masker(masked_text)
-        total_cnt += cnt
-    
-    if total_cnt > 0:
-        text = masked_text
-        print(f"Total mask replacement: {total_cnt}")
-    return text
-        
-
 def test_extract_text_from_warc():
     warc_path = os.path.join(DATA_PATH, "CC", "example.warc.gz")
     wet_path = os.path.join(DATA_PATH, "CC", "example.warc.wet.gz")
@@ -53,15 +36,13 @@ def test_extract_text_from_warc():
 def test_identify_language_warc():
     warc_path = os.path.join(DATA_PATH, "CC", "example.warc.gz")
     model_path = os.path.join(DATA_PATH, "classifiers", "lid.176.bin")
-    model = fasttext.load_model(model_path)
+    model = FastTextFilter(model_path)
     k = 20
     print()
     for warc in read_warc(warc_path):
         warc = run_extract_text_from_html_bytes(warc)
         k -= 1
-        labels, probs = model.predict(warc.replace("\n", " "), k=1)
-        label = labels[0].replace("__label__", "")
-        conf = float(probs[0])
+        label, conf = model.predict(warc.replace("\n", " "), k=1)
         print(label, conf)
         print(warc[:20])
         print("="*50)
@@ -74,15 +55,13 @@ def test_identify_language_warc():
 def test_classify_nsfw_warc():
     warc_path = os.path.join(DATA_PATH, "CC", "example.warc.gz")
     model_path = os.path.join(DATA_PATH, "classifiers", "jigsaw_fasttext_bigrams_nsfw_final.bin")
-    model = fasttext.load_model(model_path)
+    model = FastTextFilter(model_path)
     k = 20
     print()
     for warc in read_warc(warc_path):
         warc = run_extract_text_from_html_bytes(warc)
         # k -= 1
-        labels, probs = model.predict(warc.strip().replace("\n", " "), k=1)
-        label = labels[0].replace("__label__", "")
-        conf = float(probs[0])
+        label, conf = model.predict(warc.strip().replace("\n", " "), k=1)
         if label == "nsfw":
             k -= 1
             print(label, conf)
@@ -97,15 +76,13 @@ def test_classify_nsfw_warc():
 def test_classify_toxic_speech_warc():
     warc_path = os.path.join(DATA_PATH, "CC", "example.warc.gz")
     model_path = os.path.join(DATA_PATH, "classifiers", "jigsaw_fasttext_bigrams_hatespeech_final.bin")
-    model = fasttext.load_model(model_path)
+    model = FastTextFilter(model_path)
     k = 20
     print()
     for warc in read_warc(warc_path):
         warc = run_extract_text_from_html_bytes(warc)
         # k -= 1
-        labels, probs = model.predict(warc.strip().replace("\n", " "), k=1)
-        label = labels[0].replace("__label__", "")
-        conf = float(probs[0])
+        label, conf = model.predict(warc.strip().replace("\n", " "), k=1)
         if label == "toxic":
             k -= 1
             print(label, conf)

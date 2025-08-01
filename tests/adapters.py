@@ -8,7 +8,8 @@ import fasttext
 import re
 import pathlib
 import nltk
-nltk.download('punkt_tab')
+nltk.data.path.append('/root/nltk_data')
+# nltk.download('punkt_tab', download_dir='/root/nltk_data')
 from nltk.tokenize import word_tokenize
 from collections import defaultdict
 import itertools
@@ -90,7 +91,7 @@ def run_classify_toxic_speech(text: str) -> tuple[Any, float]:
 
 
 def run_classify_quality(text: str) -> tuple[Any, float]:
-    model = fasttext.load_model(f"{DATA_PATH}/classifiers/quality_classifier.bin")
+    model = fasttext.load_model(f"{DATA_PATH}/classifiers/quality_classifier.ftz")
     labels, probs = model.predict(text.replace("\n", " "), k=1)
     label = labels[0].replace("__label__", "")
     conf = float(probs[0])
@@ -177,8 +178,8 @@ def run_minhash_deduplication(
             text = f.read()
         norm_text = normalize_text(text)
         words = norm_text.split()
-        ngrams = get_ngrams(words, ngrams)
-        sig = minhash_signature(ngrams, hash_funcs)
+        ngram_set = get_ngrams(words, ngrams)
+        sig = minhash_signature(ngram_set, hash_funcs)
         for band in range(num_bands):
             lo = band * band_size
             hi = lo + band_size
@@ -187,10 +188,14 @@ def run_minhash_deduplication(
     cnts = defaultdict(int)
     candidate_pairs = set()
     for band in range(num_bands):
-        for pair in itertools.combinations(buckets[band].values(), 2):
-            candidate_pairs.add(pair)
-            cnts[pair[0]] += 1
-            cnts[pair[1]] += 1
+        for bucket in buckets[band].values():
+            if len(bucket) <= 1:
+                continue
+            for pair in itertools.combinations(bucket, 2):  # 2-order combination in bucket is candidate duplication
+                candidate_pairs.add(pair)
+                cnts[pair[0]] += 1
+                cnts[pair[1]] += 1
+    del buckets
     
     parent = list(range(len(input_files)))  # union set        
     def find(x):
@@ -205,9 +210,9 @@ def run_minhash_deduplication(
     
     cache = {}  # in case of storing all ngrams in memory, we use cache to buffer most frequently used ngrams
     for i, j in candidate_pairs:
-        ngrams_i = load_ngrams_from_cache(i, input_files[i], cache, cnts)
-        ngrams_j = load_ngrams_from_cache(j, input_files[j], cache, cnts)
-        jac = jaccard_sim(ngrams_i, ngrams_j)
+        ngram_set_i = load_ngrams_from_cache(i, input_files[i], cache, cnts, ngrams)
+        ngram_set_j = load_ngrams_from_cache(j, input_files[j], cache, cnts, ngrams)
+        jac = jaccard_sim(ngram_set_i, ngram_set_j)
         if jac >= jaccard_threshold:  # cluster pair with jaccard similarity above certain threshold
             union(i, j)
     del cache
@@ -220,7 +225,7 @@ def run_minhash_deduplication(
     for value in clusters.values():
         if len(value) > 1:  # keep only one doc in duplicated cluster
             keep_idx = random.choice(value)
-        else:
+        else:  # unique doc forms cluster with itself
             keep_idx = value[0]
         keep_file = input_files[keep_idx]
         output_path = os.path.join(output_directory, os.path.basename(keep_file))

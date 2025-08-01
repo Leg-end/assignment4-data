@@ -51,19 +51,23 @@ def stable_hash_func(seed: int) -> Callable:
     return _hash
 
 
-def load_ngrams_from_cache(index: int, input_file: str, cache: dict[int, dict], cnts: list[int]) -> set[tuple[str]]:
+def load_ngrams_from_cache(index: int,
+                           input_file: str,
+                           cache: dict[int, dict],
+                           cnts: list[int],
+                           ngrams: int) -> set[tuple[str]]:
     if index not in cache:
         text = open(input_file, encoding="utf-8").read()
         norm_text = normalize_text(text)
         words = norm_text.split()
-        ngrams = get_ngrams(words, ngrams)
+        ngram_set = get_ngrams(words, ngrams)
         if cnts[index] > 1:
-            cache[index] = ngrams
+            cache[index] = ngram_set
         else:  # for doc only show once, no need to cache it
-            return ngrams
+            return ngram_set
     else:
-        ngrams = cache[index]
+        ngram_set = cache[index]
     cnts[index] -= 1
     if cnts[index] == 0:  # never used in later, thus remove it from cache
         cache.pop(index)
-    return ngrams
+    return ngram_set
